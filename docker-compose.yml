@@ -24,6 +24,15 @@ services:
     build: ../test-manager-library-3145556-api
     env_file: .env
     environment: &api-env
+      # Explicit: without a .env inside the image Laravel would fall back to SQLite and database-backed sessions/cache.
+      APP_ENV: production
+      APP_DEBUG: "false"
+      LOG_CHANNEL: stderr
+      SESSION_DRIVER: array
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      DB_CONNECTION: pgsql
+      DB_PORT: "5432"
       DB_HOST: db
       DB_DATABASE: library
       DB_USERNAME: library
