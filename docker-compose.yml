@@ -1,0 +1,94 @@
+# Manager Library — one command: `docker compose up --build`
+# Expects the six repos cloned side by side (../test-manager-library-3145556-api, -app, -page, -tool).
+# The database starts EMPTY: the schema is created by the API migrations (ADR-001); this repo holds no DDL at all.
+name: manager-library
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: library
+      POSTGRES_USER: library
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U library -d library"]
+      interval: 3s
+      retries: 20
+
+  api:
+    build: ../test-manager-library-3145556-api
+    env_file: .env
+    environment: &api-env
+      DB_HOST: db
+      DB_DATABASE: library
+      DB_USERNAME: library
+      DB_PASSWORD: ${DB_PASSWORD}
+      CORS_ORIGIN: http://localhost:${APP_PORT:-5173}
+      CLOCK_OFFSET_DAYS: "0"
+    volumes:
+      - covers:/app/storage/app/covers
+    ports: ["${API_PORT:-8000}:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck: &api-health
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8000/api/v1/health') ? 0 : 1);"]
+      interval: 3s
+      retries: 40
+    networks: [backend, frontend]
+
+  # Seed-only instance whose Clock port is shifted into the past, so the seeder can create
+  # genuinely overdue loans THROUGH THE API (T-21). Only started with `--profile seed`.
+  api-past:
+    build: ../test-manager-library-3145556-api
+    profiles: [seed]
+    env_file: .env
+    environment:
+      <<: *api-env
+      CLOCK_OFFSET_DAYS: "-20"
+    volumes:
+      - covers:/app/storage/app/covers
+    ports: ["${API_PAST_PORT:-8001}:8000"]
+    depends_on:
+      api: { condition: service_healthy }   # migrations already applied by `api`
+    healthcheck: *api-health
+    networks: [backend]
+
+  app:
+    build:
+      context: ../test-manager-library-3145556-app
+      args:
+        VITE_API_URL: http://localhost:${API_PORT:-8000}/api/v1
+    ports: ["${APP_PORT:-5173}:80"]
+    depends_on: [api]
+    networks: [frontend]
+
+  page:
+    build: ../test-manager-library-3145556-page
+    ports: ["${PAGE_PORT:-8080}:80"]
+    networks: [frontend]
+
+  seed:
+    build: ../test-manager-library-3145556-tool
+    profiles: [seed]
+    environment:
+      API_URL: http://api:8000/api/v1
+      API_PAST_URL: http://api-past:8000/api/v1
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    depends_on:
+      api: { condition: service_healthy }
+      api-past: { condition: service_healthy }
+    networks: [backend]
+
+volumes:
+  db-data:
+  covers:
+
+networks:
+  backend:
+  frontend:

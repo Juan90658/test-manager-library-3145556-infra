@@ -1,50 +1,38 @@
 # test-manager-library-3145556-infra
 
-> **Prueba técnica · Ficha ADSO 3145556**
-> Entrega: **martes 13 de octubre de 2026, a las 5:00 p. m.** (17:00, hora Colombia).
+> **Technical test · ADSO 3145556** — *Manager Library* infrastructure: containers, network, volumes and an **empty** database engine.
 
-Este repositorio es la **infraestructura** de *Manager Library*: contenedores, red, volúmenes y el motor de base de datos vacío. **Empieza vacío a propósito**: se construye en el fork de cada aprendiz.
+## One command (RNF-5, T-20)
 
-## Instrucciones
+Clone the six repos side by side, then:
 
-Cada aprendiz debe **crear el fork** de los seis repositorios del proyecto y **resolver el proyecto
-con el spec planteado**.
+```bash
+cd test-manager-library-3145556-infra
+cp .env.example .env        # set DB_PASSWORD, JWT_SECRET (openssl rand -hex 32) and ADMIN_PASSWORD
+docker compose up --build
+```
 
-1. Hacer fork, a su cuenta de GitHub, de cada repositorio de la tabla del final.
-2. Leer el spec en [`test-manager-library-3145556-docs`](https://github.com/code-sena/test-manager-library-3145556-docs).
-   Se entrega en dos versiones: `spec-python/` y `spec-.net/`.
-3. Desarrollar en los forks.
+| Service | URL | What it is |
+|---|---|---|
+| `db` | internal | PostgreSQL 16, starts with **no tables** |
+| `api` | http://localhost:8000/api/v1 | Laravel API; on start it runs the migrations and creates the admin from `.env` |
+| `app` | http://localhost:5173 | React frontend |
+| `page` | http://localhost:8080 | Static public site (does not call the API) |
 
-## El reto se desarrolla con React y PHP (Laravel)
+Demo data (T-21), through the API:
 
-El spec está escrito para Python y para .NET, pero el reto **no** se hace en esos lenguajes:
+```bash
+docker compose --profile seed up --build seed
+```
 
-| Capa | Tecnología del reto |
-|---|---|
-| Frontend | React |
-| Backend | PHP con Laravel |
+The `seed` profile adds `api-past`, a second API instance whose `Clock` port is shifted 20 days back.
+The seeder creates the loans that must end up overdue through that instance, so overdue data exists without SQL
+and without any backdoor endpoint (see `docs/laravel-decisions`, trap 6).
 
-Lo que el spec define sobre el negocio —historias, criterios de aceptación, reglas, contrato de la
-API, modelo de datos— se respeta. Lo que define sobre la tecnología se traduce a React y Laravel.
+## Rules this repo follows
 
-## La prueba no consiste en escribir el código
-
-El propósito principal es ver la **capacidad de desempeño con SDD** (*Spec-Driven Development*,
-desarrollo guiado por especificación): cómo se lee, se interpreta y se aplica una especificación
-para llevarla a un stack distinto. El código es el medio, no el fin.
-
-## Entrega
-
-Cuenta lo que quede **subido a los forks antes de las 5:00 p. m.** (17:00). Lo que llegue después no se revisa.
-No hay prórroga: suban avances parciales con commits pequeños durante la prueba.
-
-## Los seis repositorios
-
-| Repositorio | Qué va ahí |
-|---|---|
-| [`test-manager-library-3145556-docs`](https://github.com/code-sena/test-manager-library-3145556-docs) | El spec: `spec-python/` y `spec-.net/` |
-| [`test-manager-library-3145556-api`](https://github.com/code-sena/test-manager-library-3145556-api) | Backend en PHP (Laravel) |
-| [`test-manager-library-3145556-app`](https://github.com/code-sena/test-manager-library-3145556-app) | Frontend en React |
-| [`test-manager-library-3145556-page`](https://github.com/code-sena/test-manager-library-3145556-page) | Sitio público estático de presentación |
-| [`test-manager-library-3145556-infra`](https://github.com/code-sena/test-manager-library-3145556-infra) | Contenedores, red, volúmenes y motor de base de datos vacío |
-| [`test-manager-library-3145556-tool`](https://github.com/code-sena/test-manager-library-3145556-tool) | Utilidades: sembrador de datos de demostración |
+- **No DDL here** (ADR-001, constitution art. V): the schema belongs to the API migrations.
+  Check: `grep -ri "create table" .` returns nothing.
+- Secrets only in `.env`, which is git-ignored; only `.env.example` is versioned (art. IX).
+- Two networks: `backend` (db, api) and `frontend` (api, app, page). The database is never published to the host.
+- Volumes: `db-data` for PostgreSQL, `covers` for cover binaries (the database only stores the opaque key).
