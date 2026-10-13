@@ -36,3 +36,15 @@ and without any backdoor endpoint (see `docs/laravel-decisions`, trap 6).
 - Secrets only in `.env`, which is git-ignored; only `.env.example` is versioned (art. IX).
 - Two networks: `backend` (db, api) and `frontend` (api, app, page). The database is never published to the host.
 - Volumes: `db-data` for PostgreSQL, `covers` for cover binaries (the database only stores the opaque key).
+
+## Evidence (run on Windows 11 + Docker Desktop, 2026-10-13)
+
+| Check | Result |
+|---|---|
+| `docker compose up --build` on an empty volume | Migrations created the `library` schema; `Admin '…' created.`; API healthy on :8000 |
+| `docker compose --profile seed up --build seed` | `Created 40 books and 10 members.` · `Created 15 loans. Overdue lines: 3. Report rows: 19.` · exit code 0 |
+| App at http://localhost:5173 | Login, catalog and cover upload checked by hand |
+
+Issue found while running it: without a `.env` inside the image, Laravel fell back to SQLite
+(`near "SCHEMA": syntax error`). Fixed by setting `DB_CONNECTION=pgsql` and the stateless
+session/cache/queue drivers explicitly in `docker-compose.yml`.
